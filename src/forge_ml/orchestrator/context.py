@@ -31,6 +31,12 @@ class TaskContext:
     best_params: dict[str, Any] = field(default_factory=dict)
     best_score: float = 0.0
 
+    # Execution phase (subprocess runner)
+    generated_script: str = ""
+    script_success: bool = False
+    execution_stdout: str = ""
+    execution_stderr: str = ""
+
     # Meta
     providers_used: list[str] = field(default_factory=list)
     total_cost_usd: float = 0.0

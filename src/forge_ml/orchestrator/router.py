@@ -12,14 +12,46 @@ from .context import TaskContext
 from .providers.base import AgentMessage, BaseProvider
 from .providers.claude import ClaudeProvider
 from .providers.openai import OpenAIProvider
+from .providers.claude_code import ClaudeCodeCLIProvider
+from .providers.codex_cli import CodexCLIProvider
+from .providers.copilot_cli import CopilotCLIProvider
 
 
 def _build_providers() -> dict[str, BaseProvider]:
-    candidates: dict[str, BaseProvider] = {
-        "claude": ClaudeProvider(),
-        "openai": OpenAIProvider(),
-    }
-    return {name: p for name, p in candidates.items() if p.is_available()}
+    """
+    Discover all available providers — CLI tools take priority over API keys
+    because they require no extra credentials and run with full-auto permissions.
+
+    Priority order per name slot:
+      claude   → claude-code CLI  > Anthropic API
+      codex    → codex CLI        (no API fallback)
+      copilot  → gh copilot CLI   (no API fallback)
+      openai   → OpenAI API       (fallback when codex CLI absent)
+    """
+    candidates: dict[str, BaseProvider] = {}
+
+    # CLI providers (preferred — no API key needed)
+    claude_cli = ClaudeCodeCLIProvider()
+    codex_cli = CodexCLIProvider()
+    copilot_cli = CopilotCLIProvider()
+
+    if claude_cli.is_available():
+        candidates["claude"] = claude_cli
+    elif ClaudeProvider().is_available():
+        candidates["claude"] = ClaudeProvider()
+
+    if codex_cli.is_available():
+        candidates["codex"] = codex_cli
+
+    if copilot_cli.is_available():
+        candidates["copilot"] = copilot_cli
+
+    # OpenAI API as fallback for code-gen stages if codex CLI is absent
+    openai_api = OpenAIProvider()
+    if openai_api.is_available():
+        candidates["openai"] = openai_api
+
+    return candidates
 
 
 class Orchestrator:
@@ -71,20 +103,23 @@ class Orchestrator:
             raise RuntimeError("No AI providers configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.")
 
     def _pick_provider(self, stage: str) -> BaseProvider:
-        """Pick provider per stage: prefer Claude for research/summarize, OpenAI for build/optimize."""
-        stage_prefs: dict[str, str] = {
-            "research": "claude",
-            "summarize": "claude",
-            "build": "openai",
-            "optimize": "openai",
-            "data": "claude",
+        """
+        Route each stage to the best available provider.
+
+        Preference order per stage:
+          research / data / summarize  → claude-code CLI > claude API > any
+          build / optimize             → codex CLI > copilot CLI > openai API > claude > any
+        """
+        stage_prefs: dict[str, list[str]] = {
+            "research":  ["claude", "copilot", "codex", "openai"],
+            "data":      ["claude", "copilot", "codex", "openai"],
+            "summarize": ["claude", "copilot", "codex", "openai"],
+            "build":     ["codex", "copilot", "openai", "claude"],
+            "optimize":  ["codex", "copilot", "openai", "claude"],
         }
-        preferred = stage_prefs.get(stage, config.default_provider)
-        if preferred in self.providers:
-            return self.providers[preferred]
-        # fallback to global default, then any available
-        if config.default_provider in self.providers:
-            return self.providers[config.default_provider]
+        for name in stage_prefs.get(stage, ["claude", "openai"]):
+            if name in self.providers:
+                return self.providers[name]
         return next(iter(self.providers.values()))
 
     async def _call(self, stage: str, user_prompt: str, ctx: TaskContext) -> str:

@@ -34,6 +34,28 @@ forge run "classify sentiment of movie reviews into positive or negative"
 
 ---
 
+## Quick start
+
+```bash
+# 1. Clone and install
+git clone https://github.com/yaseenshady/forge-ml
+cd forge-ml
+pip install -e .
+
+# 2. Make sure at least one CLI tool is installed and authenticated
+#    (forge-ml uses whichever of these it finds — no API keys needed)
+#    Claude Code:   https://claude.ai/code
+#    Codex CLI:     npm install -g @openai/codex
+#    GitHub Copilot: gh extension install github/gh-copilot
+
+# 3. Run
+forge run "classify sentiment of movie reviews into positive or negative"
+```
+
+That's it. No `.env` file, no API keys — forge-ml picks up your locally installed and authenticated CLI tools automatically.
+
+---
+
 ## How it works
 
 Forge runs six coordinated agents in sequence. Each stage gets the outputs of the previous one, so every decision is grounded in real data.
